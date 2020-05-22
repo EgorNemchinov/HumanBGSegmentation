@@ -4,24 +4,6 @@ import os.path as osp
 import argparse
 import os
 
-def load_img_mask(img_dir, index):
-    img = cv2.imread(osp.join(img_dir, f'{index:04d}_img.png'))
-    mask = cv2.imread(osp.join(img_dir, f'{index:04d}_masksDL.png'), cv2.IMREAD_GRAYSCALE)
-    if img is None or mask is None:
-        return None, None
-    return img, mask[:, :, np.newaxis]
-
-
-def load_img_mask(img_dir, index):
-    files = sorted([f for f in os.listdir(img_dir) if f.endswith('.png')])
-    if index >= len(files):
-        return None, None
-    filename = files[index]
-    img = cv2.imread(osp.join(img_dir, filename))
-    mask = cv2.imread(osp.join(img_dir.replace('images', 'masks'), filename), cv2.IMREAD_GRAYSCALE)
-    if img is None or mask is None:
-        return None, None
-    return img, mask[:, :, np.newaxis]
 
 def load_img_mask(img_dir, index):
     files = sorted([f for f in os.listdir(img_dir) if f.endswith('_img.png')])
@@ -35,7 +17,7 @@ def load_img_mask(img_dir, index):
     return img, mask[:, :, np.newaxis]
 
 
-def main(img_dir, bg_out_path, step=8, tf_masks=False):
+def main(img_dir, bg_out_path, step=8, inpaint=True):
     i = 1
     img, mask = load_img_mask(img_dir, i)
     frame_sum, mask_sum = 0, 0
@@ -47,6 +29,11 @@ def main(img_dir, bg_out_path, step=8, tf_masks=False):
     print(f'Total images used for extracting bg: {i//step}')
     coords = np.argwhere(mask_sum > 0)
     frame_sum[coords[:, 0], coords[:, 1], :] = frame_sum[coords[:, 0], coords[:, 1], :] / mask_sum[coords[:, 0], coords[:, 1]]
+    frame_sum = frame_sum.clip(0, 255).astype(np.uint8)
+    if inpaint:
+        inpaint_radius = int(0.03 * np.mean(frame_sum.shape[:2]) + 0.5)
+        mask = cv2.dilate((mask_sum == 0).astype(np.uint8) * 255, np.ones((inpaint_radius // 2, inpaint_radius // 2)))
+        frame_sum = cv2.inpaint(frame_sum, mask, inpaint_radius, cv2.INPAINT_TELEA)
     cv2.imwrite(bg_out_path, frame_sum)
 
 
@@ -54,8 +41,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('img_dir')
     parser.add_argument('bg_out_path')
-    parser.add_argument('--tf_masks', action='store_true')
     parser.add_argument('--step', type=int, default=8)
+    parser.add_argument('--no_inpainting', action='store_true')
     args = parser.parse_args()
 
-    main(args.img_dir, args.bg_out_path, args.step, tf_masks=args.tf_masks)
+    main(args.img_dir, args.bg_out_path, args.step, inpaint=(not args.no_inpainting))
