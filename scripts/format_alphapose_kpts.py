@@ -17,7 +17,7 @@ def format_alphapose_to_openpose(alphapose_json, out_kpts_dir, frames_dir):
         people = [{'pose_keypoints_2d': kp['keypoints']} for kp in frame_ap_kpts]
         return {'version': 1.0, 'people': people}
 
-    frames = os.listdir(frames_dir)
+    frames = sorted(os.listdir(frames_dir))
     for ind in tqdm(range(0, len(frames))):
         kp = kpts_by_frame[ind]
         path = os.path.join(out_kpts_dir, frames[ind].replace('.png', '_keypoints.json'))
