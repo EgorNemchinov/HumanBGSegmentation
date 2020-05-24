@@ -4,6 +4,7 @@ from tqdm import tqdm
 import numpy as np
 from collections import defaultdict
 import cv2
+import glob
 
 
 def calculate_metrics(gen_mask, gt_mask, threshold=0, skip_undetected=False):
@@ -74,6 +75,7 @@ if __name__ == '__main__':
     parser.add_argument('gt_mask_dirname', help='Folder name with ground truth masks')
     parser.add_argument('parent_dir', help='Folder name with ground truth masks')
     parser.add_argument('--csv_dir', help='Where to write results as .csv for each metric')
+    parser.add_argument('--depth', type=int, default=1, help='How many levels ho explore to find all dirs png files')
     args = parser.parse_args()
 
     os.makedirs(args.csv_dir, exist_ok=True)
@@ -83,6 +85,12 @@ if __name__ == '__main__':
     vid_names = sorted(
         [d for d in os.listdir(args.parent_dir) if os.path.isdir(os.path.join(args.parent_dir, d))]
     )
+    for depth_level in range(1, args.depth):
+        for v in vid_names:
+            valid_dirs = [f'{v}/dir_name' for dir_name in glob.glob(f'{os.path.join(args.parent_dir, v)}/*/')]
+            valid_dirs = [dir_name for dir_name in valid_dirs if len(glob.glob(f'{os.path.join(args.parent_dir, dir_name)}/*.png')) > 0]
+            print(f'extend by: {valid_dirs}')
+            vid_names.extend(valid_dirs)
     metric_rows = defaultdict(lambda: [[''] + vid_names + ['Mean']])
 
     for method in tqdm(gen_mask_dirnames):
