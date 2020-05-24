@@ -108,6 +108,7 @@ for epoch in range(0, args.epoch):
     netD.train()
 
     lG, lD, GenL, DisL_r, DisL_f, alL, fgL, compL, elapse_run, elapse = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    gt_maskL = 0
 
     t0 = time.time();
 
@@ -116,9 +117,11 @@ for epoch in range(0, args.epoch):
 
         bg, image, seg, multi_fr, seg_gt, back_rnd = data['bg'], data['image'], data['seg'], data['multi_fr'], data[
             'seg-gt'], data['back-rnd']
+        mask_gt = data.get('mask-gt', None)
 
         bg, image, seg, multi_fr, seg_gt, back_rnd = Variable(bg.cuda()), Variable(image.cuda()), Variable(
             seg.cuda()), Variable(multi_fr.cuda()), Variable(seg_gt.cuda()), Variable(back_rnd.cuda())
+        mask_gt = Variable(mask_gt.cuda()) if mask_gt is not None else None
 
         mask0 = Variable(torch.ones(seg.shape).cuda())
 
@@ -138,6 +141,8 @@ for epoch in range(0, args.epoch):
         al_loss = l1_loss(alpha_pred_sup, alpha_pred, mask0) + 0.5 * g_loss(alpha_pred_sup, alpha_pred, mask0)
         fg_loss = l1_loss(fg_pred_sup, fg_pred, mask)
 
+        mask_l1_loss = l1_loss(mask_gt, alpha_pred, mask0) if mask_gt is not None else 0.
+
         # compose into same background
         comp_loss = c_loss(image, alpha_pred, fg_pred, bg, mask1)
 
@@ -150,6 +155,7 @@ for epoch in range(0, args.epoch):
         # Choose the target background for composition
         # back_rnd: contains separate set of background videos captured
         # bg_sh: contains randomly permuted captured background from the same minibatch
+
         if np.random.random_sample() > 0.5:
             bg_sh = back_rnd
 
@@ -159,7 +165,7 @@ for epoch in range(0, args.epoch):
 
         loss_ganG = GAN_loss(fake_response, label_type=True)
 
-        lossG = loss_ganG + wt * (0.05 * comp_loss + 0.05 * al_loss + 0.05 * fg_loss)
+        lossG = loss_ganG + wt * (0.05 * comp_loss + 0.05 * al_loss + 0.05 * fg_loss + 0.25 * mask_l1_loss)
 
         optimizerG.zero_grad()
 
@@ -191,6 +197,7 @@ for epoch in range(0, args.epoch):
         alL += al_loss.data
         fgL += fg_loss.data
         compL += comp_loss.data
+        gt_maskL += mask_l1_loss.data
 
         log_writer.add_scalar('Generator Loss', lossG.data, epoch * KK + i + 1)
         log_writer.add_scalar('Discriminator Loss', lossD.data, epoch * KK + i + 1)
@@ -201,6 +208,7 @@ for epoch in range(0, args.epoch):
         log_writer.add_scalar('Generator Loss: Alpha', al_loss.data, epoch * KK + i + 1)
         log_writer.add_scalar('Generator Loss: Fg', fg_loss.data, epoch * KK + i + 1)
         log_writer.add_scalar('Generator Loss: Comp', comp_loss.data, epoch * KK + i + 1)
+        log_writer.add_scalar('Generator Loss: GT Mask L1', mask_l1_loss.data, epoch * KK + i + 1)
 
         t1 = time.time()
 
@@ -210,10 +218,11 @@ for epoch in range(0, args.epoch):
 
         if i % step == (step - 1):
             print(
-                '[%d, %5d] Gen-loss:  %.4f Disc-loss: %.4f Alpha-loss: %.4f Fg-loss: %.4f Comp-loss: %.4f Time-all: %.4f Time-fwbw: %.4f' % (
-                epoch + 1, i + 1, lG / step, lD / step, alL / step, fgL / step, compL / step, elapse / step,
-                elapse_run / step))
+                '[%d, %5d] Gen-loss:  %.4f Disc-loss: %.4f Alpha-loss: %.4f Fg-loss: %.4f Comp-loss: %.4f GT-Mask-L1: %.4f Time-all: %.4f Time-fwbw: %.4f' % (
+                epoch + 1, i + 1, lG / step, lD / step, alL / step, fgL / step, compL / step, gt_maskL / step,
+                elapse / step, elapse_run / step))
             lG, lD, GenL, DisL_r, DisL_f, alL, fgL, compL, elapse_run, elapse = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            gt_maskL = 0
 
             write_tb_log(image, 'image', log_writer, i)
             write_tb_log(seg, 'seg', log_writer, i)
@@ -221,6 +230,8 @@ for epoch in range(0, args.epoch):
             write_tb_log(alpha_pred, 'alpha_pred', log_writer, i)
             write_tb_log(fg_pred_sup * mask, 'fg-pred-sup', log_writer, i)
             write_tb_log(fg_pred * mask, 'fg_pred', log_writer, i)
+            if mask_gt is not None:
+                write_tb_log(mask_gt, 'mask_gt', log_writer, i)
 
             # composition
             alpha_pred = (alpha_pred + 1) / 2
