@@ -22,7 +22,8 @@ def compose_image_withshift(alpha_pred,fg_pred,bg,seg):
         x2, y2 = np.amax(where, axis=1)
 
         #select shift
-        n=np.random.randint(-(y1-10),al_tmp.shape[1]-y2-10)
+        lower_bnd = min(-(y1-10), 0)
+        n=np.random.randint(lower_bnd, max(lower_bnd+1, al_tmp.shape[1]-y2-10))
         #n positive indicates shift to right
         alpha_pred_sh=torch.cat((alpha_pred[t,:,:,-n:],alpha_pred[t,:,:,:-n]),dim=2)
         fg_pred_sh=torch.cat((fg_pred[t,:,:,-n:],fg_pred[t,:,:,:-n]),dim=2)
