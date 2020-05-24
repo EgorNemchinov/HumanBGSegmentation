@@ -20,7 +20,6 @@ print('CUDA Device: ' + os.environ["CUDA_VISIBLE_DEVICES"])
 """Parses arguments."""
 parser = argparse.ArgumentParser(description='Background Matting.')
 parser.add_argument('-m', '--trained_model', type=str, default='real-fixed-cam',
-                    choices=['real-fixed-cam', 'real-hand-held', 'syn-comp-adobe'],
                     help='Trained background matting model')
 parser.add_argument('-o', '--output_dir', type=str, required=True,
                     help='Directory to save the output results. (required)')
@@ -31,8 +30,7 @@ parser.add_argument('-b', '--back', type=str, default=None,
 
 args = parser.parse_args()
 
-# input model
-model_main_dir = 'Models/' + args.trained_model + '/';
+
 # input data path
 data_path = args.input_dir
 
@@ -51,9 +49,21 @@ else:
     back_img20[..., 1] = 255;
     back_img20[..., 2] = 155;
 
+# input model
+model_dir = os.path.join('Models', args.trained_model)
+if os.path.isdir(model_dir) and len(os.listdir(model_dir)) > 0:
+    model_main_dir = 'Models/' + args.trained_model + '/'
+    fo = glob.glob(model_main_dir + 'netG_epoch_*')
+    model_name1 = fo[0]
+else:
+    models = glob.glob(f'Models/{args.trained_model}net*_epoch_*')
+    models.sort(key=lambda k: int(k[:-4].split('_')[-1]))
+    model_name1 = models[-1]
+    assert os.path.exists(model_name1), model_name1
+print(f'Using model"{args.trained_model}" with checkpoint at {model_name1}')
 # initialize network
-fo = glob.glob(model_main_dir + 'netG_epoch_*')
-model_name1 = fo[0]
+# fo = glob.glob(model_main_dir + 'netG_epoch_*')
+# model_name1 = fo[0]
 netM = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=7, n_blocks2=3)
 netM = nn.DataParallel(netM)
 netM.load_state_dict(torch.load(model_name1))
