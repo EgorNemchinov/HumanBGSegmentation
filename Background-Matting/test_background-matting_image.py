@@ -126,8 +126,7 @@ for i in range(0, len(test_imgs)):
 
     # crop tightly
     bgr_img0 = bgr_img;
-    if rcnn.sum() < 10:
-        print('skipping')
+    if rcnn.sum() < 500:
         cv2.imwrite(result_path + '/' + filename.replace('_img', '_out'), bgr_img * 0)
         cv2.imwrite(result_path + '/' + filename.replace('_img', '_fg'), bgr_img * 0)
         cv2.imwrite(result_path + '/' + filename.replace('_img', '_compose'), back_img10)
@@ -136,6 +135,7 @@ for i in range(0, len(test_imgs)):
     bbox = get_bbox(rcnn, R=bgr_img0.shape[0], C=bgr_img0.shape[1])
 
     crop_list = [bgr_img, bg_im0, rcnn, back_img10, back_img20, multi_fr_w]
+    assert not any(c is None for c in crop_list), [i for i in range(len(crop_list)) if crop_list[i] is None]
     crop_list = crop_images(crop_list, reso, bbox)
     bgr_img = crop_list[0];
     bg_im = crop_list[1];
