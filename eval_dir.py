@@ -43,6 +43,11 @@ def calculate_metrics(gen_mask, gt_mask, threshold=0, skip_undetected=False):
 
 
 def eval_dir(gen_masks_dir, gt_masks_dir, threshold=64):
+    metric_list = defaultdict(list)
+
+    if not os.path.isdir(gen_masks_dir):
+        print(f'No directory {gen_masks_dir}')
+        return metric_list
     gen_masks_paths = [
         os.path.join(gen_masks_dir, f) for f in os.listdir(gen_masks_dir) if f.endswith('.png')
     ]
@@ -50,12 +55,11 @@ def eval_dir(gen_masks_dir, gt_masks_dir, threshold=64):
         gen_masks_paths
     ), f'More generated masks than gt: {len(gen_masks_paths)} vs {gt_masks_dir}'
 
-    metric_list = defaultdict(list)
     for gen_mask_path in gen_masks_paths:
         gen_mask = cv2.imread(gen_mask_path, 0)
         assert gen_mask is not None, gen_mask_path
 
-        gt_path = os.path.join(gt_masks_dir, os.path.basename(gen_mask_path))
+        gt_path = os.path.join(gt_masks_dir, os.path.basename(gen_mask_path).replace('_img.png', '.png'))
         gt_mask = cv2.imread(gt_path)
         assert gt_mask is not None, gt_path
         assert gen_mask.shape == gt_mask.shape[:2], (gen_mask.shape, gt_mask.shape)
@@ -75,7 +79,6 @@ if __name__ == '__main__':
     parser.add_argument('gt_mask_dirname', help='Folder name with ground truth masks')
     parser.add_argument('parent_dir', help='Folder name with ground truth masks')
     parser.add_argument('--csv_dir', help='Where to write results as .csv for each metric')
-    parser.add_argument('--depth', type=int, default=1, help='How many levels ho explore to find all dirs png files')
     args = parser.parse_args()
 
     os.makedirs(args.csv_dir, exist_ok=True)
@@ -85,12 +88,6 @@ if __name__ == '__main__':
     vid_names = sorted(
         [d for d in os.listdir(args.parent_dir) if os.path.isdir(os.path.join(args.parent_dir, d))]
     )
-    for depth_level in range(1, args.depth):
-        for v in vid_names:
-            valid_dirs = [f'{v}/dir_name' for dir_name in glob.glob(f'{os.path.join(args.parent_dir, v)}/*/')]
-            valid_dirs = [dir_name for dir_name in valid_dirs if len(glob.glob(f'{os.path.join(args.parent_dir, dir_name)}/*.png')) > 0]
-            print(f'extend by: {valid_dirs}')
-            vid_names.extend(valid_dirs)
     metric_rows = defaultdict(lambda: [[''] + vid_names + ['Mean']])
 
     for method in tqdm(gen_mask_dirnames):
