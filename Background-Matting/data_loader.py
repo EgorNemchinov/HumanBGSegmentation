@@ -39,8 +39,10 @@ class VideoData(Dataset):
         gt_path = self.frames.iloc[idx, 0].replace('_img.png', '_gt.png')
         gt_mask = io.imread(gt_path) if os.path.exists(gt_path) else None
 
-        kpts_path = self.frames.iloc[idx, 0].replace('_img.png', '_keypoints.json')
+        kpts_path = self.frames.iloc[idx, 0].replace('_img.png', '_img_keypoints.json')
         kpts = read_kpts_json(kpts_path) if os.path.exists(kpts_path) else None
+        kpts_path = kpts_path.replace('_img', '')
+        kpts = read_kpts_json(kpts_path) if (kpts is None) and os.path.exists(kpts_path) else kpts
 
         sz = self.resolution
 
@@ -56,7 +58,7 @@ class VideoData(Dataset):
             if gt_mask is not None:
                 gt_mask = cv2.flip(gt_mask, 1)
             if kpts is not None:
-                assert sz[0] > kpts[:, 0].max(), (sz, kpts[:, 0].max())
+#                assert sz[0] > kpts[:, 0].max(), (sz, kpts[:, 0].max())
                 for i in range(len(kpts)):
                     kpts[i][:, 0] = sz[0] - kpts[i][:, 0]
 
@@ -80,9 +82,8 @@ class VideoData(Dataset):
             kpts = apply_crop_kpts(kpts, bbox, self.resolution)
 
         if kpts is not None:
-            skeleton_feats = [gen_skeletons(kp, sz[0], sz[1], stride=1, sigma=6., threshold=4., visdiff=False)
-                              for kp in kpts]
-            skeleton_feats = sum(skeleton_feats, 0)
+            kpts = np.concatenate(tuple(kp[np.newaxis,...] for kp in kpts), axis=0)
+            skeleton_feats = gen_skeletons(kpts, sz[0], sz[1], stride=1, sigma=6., threshold=4., visdiff=False)
 
         # convert seg to guidance map
         # segg=create_seg_guide(seg,self.resolution)

@@ -33,7 +33,8 @@ parser.add_argument('-n_blocks1', '--n_blocks1', type=int, default=7,
                     help='Number of residual blocks after Context Switching.')
 parser.add_argument('-n_blocks2', '--n_blocks2', type=int, default=3,
                     help='Number of residual blocks for Fg and alpha each.')
-parser.add_argument('-use_kpts', '--use_kpts', action='store_true', type=str, help='Whether to load keypoints additionally')
+parser.add_argument('-csv_file', '--csv_file', type=str, default='Video_data_train.csv', help='Csv file with training data')
+parser.add_argument('-use_kpts', '--use_kpts', action='store_true', help='Whether to load keypoints additionally')
 
 args = parser.parse_args()
 
@@ -60,7 +61,7 @@ def collate_filter_none(batch):
 
 
 # Original Data
-traindata = VideoData(csv_file='Video_data_train.csv', data_config=data_config_train,
+traindata = VideoData(csv_file=args.csv_file, data_config=data_config_train,
                       transform=None)  # Write a dataloader function that can read the database provided by .csv file
 train_loader = torch.utils.data.DataLoader(traindata, batch_size=args.batch_size, shuffle=True,
                                            num_workers=args.batch_size, collate_fn=collate_filter_none)
@@ -75,7 +76,7 @@ netB.eval()
 for param in netB.parameters():  # freeze netD
     param.requires_grad = False
 
-netG = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=args.n_blocks1, n_blocks2=args.n_blocks2, kpts_nc=55 if args.use_kpts else None)
+netG = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=args.n_blocks1, n_blocks2=args.n_blocks2, kpts_nc=56 if args.use_kpts else None)
 netG.apply(conv_init)
 netG = nn.DataParallel(netG)
 netG.cuda()
@@ -200,7 +201,7 @@ for epoch in range(0, args.epoch):
         alL += al_loss.data
         fgL += fg_loss.data
         compL += comp_loss.data
-        gt_maskL += mask_l1_loss.data
+        gt_maskL += mask_l1_loss.data if not isinstance(mask_l1_loss, float) else 0.
 
         log_writer.add_scalar('Generator Loss', lossG.data, epoch * KK + i + 1)
         log_writer.add_scalar('Discriminator Loss', lossD.data, epoch * KK + i + 1)
@@ -211,7 +212,8 @@ for epoch in range(0, args.epoch):
         log_writer.add_scalar('Generator Loss: Alpha', al_loss.data, epoch * KK + i + 1)
         log_writer.add_scalar('Generator Loss: Fg', fg_loss.data, epoch * KK + i + 1)
         log_writer.add_scalar('Generator Loss: Comp', comp_loss.data, epoch * KK + i + 1)
-        log_writer.add_scalar('Generator Loss: GT Mask L1', mask_l1_loss.data, epoch * KK + i + 1)
+        if not isinstance(mask_l1_loss, float):
+            log_writer.add_scalar('Generator Loss: GT Mask L1', mask_l1_loss.data, epoch * KK + i + 1)
 
         t1 = time.time()
 
