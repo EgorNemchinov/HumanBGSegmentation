@@ -33,6 +33,7 @@ parser.add_argument('-n_blocks1', '--n_blocks1', type=int, default=7,
                     help='Number of residual blocks after Context Switching.')
 parser.add_argument('-n_blocks2', '--n_blocks2', type=int, default=3,
                     help='Number of residual blocks for Fg and alpha each.')
+parser.add_argument('-use_kpts', '--use_kpts', action='store_true', type=str, help='Whether to load keypoints additionally')
 
 args = parser.parse_args()
 
@@ -74,7 +75,7 @@ netB.eval()
 for param in netB.parameters():  # freeze netD
     param.requires_grad = False
 
-netG = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=args.n_blocks1, n_blocks2=args.n_blocks2)
+netG = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=args.n_blocks1, n_blocks2=args.n_blocks2, kpts_nc=55 if args.use_kpts else None)
 netG.apply(conv_init)
 netG = nn.DataParallel(netG)
 netG.cuda()
@@ -118,10 +119,12 @@ for epoch in range(0, args.epoch):
         bg, image, seg, multi_fr, seg_gt, back_rnd = data['bg'], data['image'], data['seg'], data['multi_fr'], data[
             'seg-gt'], data['back-rnd']
         mask_gt = data.get('mask-gt', None)
+        kpts = data.get('kpts', None)
 
         bg, image, seg, multi_fr, seg_gt, back_rnd = Variable(bg.cuda()), Variable(image.cuda()), Variable(
             seg.cuda()), Variable(multi_fr.cuda()), Variable(seg_gt.cuda()), Variable(back_rnd.cuda())
         mask_gt = Variable(mask_gt.cuda()) if mask_gt is not None else None
+        kpts = Variable(kpts.cuda()) if kpts is not None else None
 
         mask0 = Variable(torch.ones(seg.shape).cuda())
 
@@ -135,7 +138,7 @@ for epoch in range(0, args.epoch):
 
         ## Train Generator
 
-        alpha_pred, fg_pred = netG(image, bg, seg, multi_fr)
+        alpha_pred, fg_pred = netG(image, bg, seg, multi_fr, kp=kpts)
 
         ##pseudo-supervised losses
         al_loss = l1_loss(alpha_pred_sup, alpha_pred, mask0) + 0.5 * g_loss(alpha_pred_sup, alpha_pred, mask0)

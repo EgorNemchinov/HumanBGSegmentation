@@ -10,6 +10,8 @@ import pdb, random
 from torch.utils.data import Dataset, DataLoader
 import random, os, cv2
 
+from skeleton_feat import read_kpts_json, gen_skeletons
+
 unknown_code = 128
 
 
@@ -34,7 +36,11 @@ class VideoData(Dataset):
 
         back_rnd = io.imread(self.frames.iloc[idx, 7])
 
-        gt_mask = io.imread(self.frames.iloc[idx, 8]) if self.frames.shape[1] > 8 else None
+        gt_path = self.frames.iloc[idx, 0].replace('_img.png', '_gt.png')
+        gt_mask = io.imread(gt_path) if os.path.exists(gt_path) else None
+
+        kpts_path = self.frames.iloc[idx, 0].replace('_img.png', '_keypoints.json')
+        kpts = read_kpts_json(kpts_path) if os.path.exists(kpts_path) else None
 
         sz = self.resolution
 
@@ -49,6 +55,10 @@ class VideoData(Dataset):
             fr4 = cv2.flip(fr4, 1)
             if gt_mask is not None:
                 gt_mask = cv2.flip(gt_mask, 1)
+            if kpts is not None:
+                assert sz[0] > kpts[:, 0].max(), (sz, kpts[:, 0].max())
+                for i in range(len(kpts)):
+                    kpts[i][:, 0] = sz[0] - kpts[i][:, 0]
 
         # make frames together
         multi_fr = np.zeros((img.shape[0], img.shape[1], 4))
@@ -66,15 +76,24 @@ class VideoData(Dataset):
         multi_fr = apply_crop(multi_fr, bbox, self.resolution)
         if gt_mask is not None:
             gt_mask = apply_crop(gt_mask, bbox, self.resolution)
+        if kpts is not None:
+            kpts = apply_crop_kpts(kpts, bbox, self.resolution)
+
+        if kpts is not None:
+            skeleton_feats = [gen_skeletons(kp, sz[0], sz[1], stride=1, sigma=6., threshold=4., visdiff=False)
+                              for kp in kpts]
+            skeleton_feats = sum(skeleton_feats, 0)
 
         # convert seg to guidance map
         # segg=create_seg_guide(seg,self.resolution)
 
         sample = {'image': to_tensor(img), 'seg': to_tensor(create_seg_guide(seg, self.resolution)),
                   'bg': to_tensor(back), 'multi_fr': to_tensor(multi_fr), 'seg-gt': to_tensor(seg),
-                  'back-rnd': to_tensor(back_rnd)}
+                  'back-rnd': to_tensor(back_rnd),}
         if gt_mask is not None:
             sample.update({'mask-gt': to_tensor(gt_mask)})
+        if kpts is not None:
+            sample.update({'kpts': to_tensor(skeleton_feats)})
 
         if self.transform:
             sample = self.transform(sample)
@@ -229,6 +248,16 @@ def create_seg(alpha, trimap):
     return seg.astype(np.uint8)
 
 
+def apply_crop_kpts(kpts, bbox, reso):
+    for i in range(len(kpts)):
+        bbox = np.array(bbox)
+        kpts[i][:, :2] -= bbox[[1, 0]]
+        kpts[i][:, 0] = kpts[i][:, 0].clip(0, bbox[3])
+        kpts[i][:, 1] = kpts[i][:, 1].clip(0, bbox[2])
+        kpts[i][:, :2] *= np.array(reso[:2]) / bbox[[3, 2]]
+    return kpts
+
+
 def apply_crop(img, bbox, reso):
     img_crop = img[bbox[0]:bbox[0] + bbox[2], bbox[1]:bbox[1] + bbox[3], ...];
     img_crop = cv2.resize(img_crop, reso)
@@ -344,4 +373,3 @@ def to_tensor(pic):
     # backward compatibility
 
     return 2 * (img.float().div(255)) - 1
-
