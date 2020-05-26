@@ -35,6 +35,7 @@ parser.add_argument('-n_blocks2', '--n_blocks2', type=int, default=3,
                     help='Number of residual blocks for Fg and alpha each.')
 parser.add_argument('-csv_file', '--csv_file', type=str, default='Video_data_train.csv', help='Csv file with training data')
 parser.add_argument('-use_kpts', '--use_kpts', action='store_true', help='Whether to load keypoints additionally')
+parser.add_argument('-use_gt', '--use_gt', action='store_true', help='Whether to use _gt.png masks for supervised loss')
 
 args = parser.parse_args()
 
@@ -62,7 +63,7 @@ def collate_filter_none(batch):
 
 # Original Data
 traindata = VideoData(csv_file=args.csv_file, data_config=data_config_train,
-                      transform=None)  # Write a dataloader function that can read the database provided by .csv file
+                      transform=None, use_kpts=args.use_kpts, use_gt_masks=args.use_gt)  # Write a dataloader function that can read the database provided by .csv file
 train_loader = torch.utils.data.DataLoader(traindata, batch_size=args.batch_size, shuffle=True,
                                            num_workers=args.batch_size, collate_fn=collate_filter_none)
 
@@ -76,7 +77,7 @@ netB.eval()
 for param in netB.parameters():  # freeze netD
     param.requires_grad = False
 
-netG = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=args.n_blocks1, n_blocks2=args.n_blocks2, kpts_nc=56 if args.use_kpts else None)
+netG = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=args.n_blocks1, n_blocks2=args.n_blocks2, kpts_nc=55 if args.use_kpts else None)
 netG.apply(conv_init)
 netG = nn.DataParallel(netG)
 netG.cuda()

@@ -16,10 +16,12 @@ unknown_code = 128
 
 
 class VideoData(Dataset):
-    def __init__(self, csv_file, data_config, transform=None):
+    def __init__(self, csv_file, data_config, transform=None, use_gt_masks=False, use_kpts=False):
         self.frames = pd.read_csv(csv_file, sep=';')
         self.transform = transform
         self.resolution = data_config['reso']
+        self.use_gt_masks = use_gt_masks
+        self.use_kpts = use_kpts
 
     def __len__(self):
         return len(self.frames)
@@ -36,13 +38,19 @@ class VideoData(Dataset):
 
         back_rnd = io.imread(self.frames.iloc[idx, 7])
 
-        gt_path = self.frames.iloc[idx, 0].replace('_img.png', '_gt.png')
-        gt_mask = io.imread(gt_path) if os.path.exists(gt_path) else None
+        if self.use_gt_masks:
+            gt_path = self.frames.iloc[idx, 0].replace('_img.png', '_gt.png')
+            gt_mask = io.imread(gt_path) if os.path.exists(gt_path) else None
+        else:
+            gt_mask = None
 
-        kpts_path = self.frames.iloc[idx, 0].replace('_img.png', '_img_keypoints.json')
-        kpts = read_kpts_json(kpts_path) if os.path.exists(kpts_path) else None
-        kpts_path = kpts_path.replace('_img', '')
-        kpts = read_kpts_json(kpts_path) if (kpts is None) and os.path.exists(kpts_path) else kpts
+        if self.use_kpts:
+            kpts_path = self.frames.iloc[idx, 0].replace('_img.png', '_img_keypoints.json')
+            kpts = read_kpts_json(kpts_path) if os.path.exists(kpts_path) else None
+            kpts_path = kpts_path.replace('_img', '')
+            kpts = read_kpts_json(kpts_path) if (kpts is None) and os.path.exists(kpts_path) else kpts
+        else:
+            kpts = None
 
         sz = self.resolution
 

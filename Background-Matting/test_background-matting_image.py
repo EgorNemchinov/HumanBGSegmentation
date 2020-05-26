@@ -53,7 +53,7 @@ else:
 model_dir = os.path.join('Models', args.trained_model)
 if os.path.isdir(model_dir) and len(os.listdir(model_dir)) > 0:
     model_main_dir = 'Models/' + args.trained_model + '/'
-    fo = glob.glob(model_main_dir + 'netG_epoch_*')
+    fo = glob.glob(model_main_dir + 'net*_epoch_*')
     model_name1 = fo[0]
 else:
     models = glob.glob(f'Models/{args.trained_model}net*_epoch_*')

@@ -75,8 +75,31 @@ def gen_pafs(kpts, conns, height, width, stride, threshold):
 
     return pafs
 
+RIGHT_ORDER = [
+        0,  # 0
+        15,
+        14,
+        17,
+        16,
+        5,
+        2,
+        6,
+        3,
+        7,
+        4,  # 10
+        11,
+        8,
+        12,
+        9,
+        13,
+        10  # 16
+    ]
 
 def gen_skeletons(kpts, height, width, stride, sigma, threshold, visdiff=False):
+    if kpts.shape[1] == 18:
+        kpts = kpts[:, RIGHT_ORDER, :]
+    assert kpts.shape[1] == 17, kpts.shape
+
     conns = ((0, 1), (0, 2), (1, 2), (1, 3), (2, 4), (3, 5), (4, 6), (5, 6), (5, 7), (5, 11), (6, 8),
              (6, 12), (7, 9), (8, 10), (11, 12), (11, 13), (12, 14), (13, 15), (14, 16))
     # vis: kpts[:, :, 2]. for coco, 2 is visible, 1 is not visible, 0 is missing.
@@ -90,3 +113,4 @@ def read_kpts_json(json_path):
         kpts = json.load(f)['people']
     kpts = [np.array(person['pose_keypoints_2d']).reshape(-1, 3) for person in kpts]
     return kpts
+
