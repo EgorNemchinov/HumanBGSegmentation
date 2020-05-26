@@ -13,6 +13,8 @@ import torch.backends.cudnn as cudnn
 from functions import *
 from networks import ResnetConditionHR
 
+from skeleton_feat import read_kpts_json, gen_skeletons, apply_crop_kpts
+
 torch.set_num_threads(1)
 # os.environ["CUDA_VISIBLE_DEVICES"]="4"
 print('CUDA Device: ' + os.environ["CUDA_VISIBLE_DEVICES"])
@@ -27,8 +29,21 @@ parser.add_argument('-i', '--input_dir', type=str, required=True, help='Director
 parser.add_argument('-tb', '--target_back', type=str, help='Directory to load the target background.')
 parser.add_argument('-b', '--back', type=str, default=None,
                     help='Captured background image. (only use for inference on videos with fixed camera')
+parser.add_argument('-k', '--use_kpts', action='store_true',
+                    help='Whether to load keypoints from input_dir')
 
 args = parser.parse_args()
+
+
+def to_tensor(pic):
+    if len(pic.shape) >= 3:
+        img = torch.from_numpy(pic.transpose((2, 0, 1)))
+    else:
+        img = torch.from_numpy(pic)
+        img = img.unsqueeze(0)
+    # backward compatibility
+
+    return 2 * (img.float().div(255)) - 1
 
 
 # input data path
@@ -64,7 +79,7 @@ print(f'Using model"{args.trained_model}" with checkpoint at {model_name1}')
 # initialize network
 # fo = glob.glob(model_main_dir + 'netG_epoch_*')
 # model_name1 = fo[0]
-netM = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=7, n_blocks2=3)
+netM = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=7, n_blocks2=3, kpts_nc=55 if args.use_kpts else None)
 netM = nn.DataParallel(netM)
 netM.load_state_dict(torch.load(model_name1))
 netM.cuda();
@@ -98,6 +113,15 @@ for i in range(0, len(test_imgs)):
         # captured background image
         bg_im0 = cv2.imread(os.path.join(data_path, filename.replace('_img', '_back')));
         bg_im0 = cv2.cvtColor(bg_im0, cv2.COLOR_BGR2RGB);
+
+    if args.use_kpts:
+        kpts_path = filename.replace('_img', '_img_keypoints')
+        kpts = read_kpts_json(kpts_path) if os.path.exists(kpts_path) else None
+        kpts_path = kpts_path.replace('_img', '')
+        kpts = read_kpts_json(kpts_path) if (kpts is None) and os.path.exists(kpts_path) else kpts
+        assert kpts is not None, kpts_path
+    else:
+        kpts = None
 
     # segmentation mask
     rcnn = cv2.imread(os.path.join(data_path, filename.replace('_img', '_masksDL')), 0);
@@ -153,6 +177,11 @@ for i in range(0, len(test_imgs)):
     back_img1 = crop_list[3];
     back_img2 = crop_list[4];
     multi_fr = crop_list[5]
+    if kpts is not None:
+        kpts = apply_crop_kpts(kpts, bbox, reso)
+        kpts = np.concatenate(tuple(kp[np.newaxis, ...] for kp in kpts), axis=0)
+        skeleton_feats = gen_skeletons(kpts, reso[0], reso[1], stride=1, sigma=6., threshold=4., visdiff=False)
+        skeleton_feats = to_tensor(skeleton_feats)
 
     # process segmentation mask
     kernel_er = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -189,7 +218,7 @@ for i in range(0, len(test_imgs)):
             multi_fr.cuda())
         input_im = torch.cat([img, bg, rcnn_al, multi_fr], dim=1)
 
-        alpha_pred, fg_pred_tmp = netM(img, bg, rcnn_al, multi_fr)
+        alpha_pred, fg_pred_tmp = netM(img, bg, rcnn_al, multi_fr, kp=skeleton_feats if kpts is not None else None)
 
         al_mask = (alpha_pred > 0.95).type(torch.cuda.FloatTensor)
 

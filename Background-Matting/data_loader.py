@@ -10,7 +10,7 @@ import pdb, random
 from torch.utils.data import Dataset, DataLoader
 import random, os, cv2
 
-from skeleton_feat import read_kpts_json, gen_skeletons
+from skeleton_feat import read_kpts_json, gen_skeletons, apply_crop_kpts
 
 unknown_code = 128
 
@@ -255,16 +255,6 @@ def create_seg(alpha, trimap):
     k_size_list = [(21, 21), (31, 31), (41, 41)]
     seg = cv2.GaussianBlur(seg.astype(np.float32), random.choice(k_size_list), 0)
     return seg.astype(np.uint8)
-
-
-def apply_crop_kpts(kpts, bbox, reso):
-    for i in range(len(kpts)):
-        bbox = np.array(bbox)
-        kpts[i][:, :2] -= bbox[[1, 0]]
-        kpts[i][:, 0] = kpts[i][:, 0].clip(0, bbox[3])
-        kpts[i][:, 1] = kpts[i][:, 1].clip(0, bbox[2])
-        kpts[i][:, :2] *= np.array(reso[:2]) / bbox[[3, 2]]
-    return kpts
 
 
 def apply_crop(img, bbox, reso):

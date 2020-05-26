@@ -114,3 +114,12 @@ def read_kpts_json(json_path):
     kpts = [np.array(person['pose_keypoints_2d']).reshape(-1, 3) for person in kpts]
     return kpts
 
+
+def apply_crop_kpts(kpts, bbox, reso):
+    for i in range(len(kpts)):
+        bbox = np.array(bbox)
+        kpts[i][:, :2] -= bbox[[1, 0]]
+        kpts[i][:, 0] = kpts[i][:, 0].clip(0, bbox[3])
+        kpts[i][:, 1] = kpts[i][:, 1].clip(0, bbox[2])
+        kpts[i][:, :2] *= np.array(reso[:2]) / bbox[[3, 2]]
+    return kpts
