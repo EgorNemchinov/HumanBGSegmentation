@@ -8,7 +8,7 @@
 #path = "/home/egorn/segm/Background-Matting/Captured_Data/fixed-camera/train_custom"
 path = "/home/egorn/segm/Background-Matting/Captured_Data/fixed-camera/train_custom"
 background_path = "/home/egorn/segm/Background-Matting/Captured_Data/background"
-output_csv = "Video_data_train_custom.csv"
+output_csv = "data_csvs/Video_data_train_custom.csv"
 GT_MASKS=False
 #######################################
 

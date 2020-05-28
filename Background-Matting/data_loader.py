@@ -72,7 +72,8 @@ class VideoData(Dataset):
 
         sample = {'image': to_tensor(img), 'seg': to_tensor(create_seg_guide(seg, self.resolution)),
                   'bg': to_tensor(back), 'multi_fr': to_tensor(multi_fr), 'seg-gt': to_tensor(seg),
-                  'back-rnd': to_tensor(back_rnd)}
+                  'back-rnd': to_tensor(back_rnd), 'invert_seg': create_inverted_seg_tensor(seg, self.resolution)}
+
         if gt_mask is not None:
             sample.update({'mask-gt': to_tensor(gt_mask)})
 
@@ -189,7 +190,7 @@ def create_seg_guide(rcnn, reso):
         rcnn = np.delete(rcnn, del_id, 0)
     rcnn = cv2.copyMakeBorder(rcnn, 0, K + len(del_id), 0, 0, cv2.BORDER_REPLICATE)
 
-    iters = np.random.randint(3, 5)
+    iters = np.random.randint(1, 2)
     rcnn = cv2.erode(rcnn, kernel_er, iterations=iters + np.random.randint(0, 1))
     rcnn = cv2.dilate(rcnn, kernel_dil, iterations=iters)
     k_size_list = [(21, 21), (31, 31)]
@@ -197,6 +198,33 @@ def create_seg_guide(rcnn, reso):
     rcnn = (255 * rcnn).astype(np.uint8)
     rcnn = np.delete(rcnn, range(reso[0], reso[0] + K), 0)
 
+    return rcnn
+
+
+def create_inverted_seg_tensor(rcnn, reso, cast_to_tensor=True):
+    kernel_dil = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    rcnn = rcnn.astype(np.float32) / 255;
+    rcnn[rcnn > 0.2] = 1;
+    K = 25
+
+    zero_id = np.nonzero(np.sum(rcnn, axis=1) == 0)
+    del_id = zero_id[0][zero_id[0] > 250]
+    if len(del_id) > 0:
+        del_id = [del_id[0] - 2, del_id[0] - 1, *del_id]
+        rcnn = np.delete(rcnn, del_id, 0)
+    rcnn = cv2.copyMakeBorder(rcnn, 0, K + len(del_id), 0, 0, cv2.BORDER_REPLICATE)
+
+    iters = np.random.randint(8, 12)
+    rcnn = cv2.dilate(rcnn, kernel_dil, iterations=iters)
+    k_size_list = [(71, 71), (81, 81)]
+    rcnn = cv2.GaussianBlur(rcnn.astype(np.float32), random.choice(k_size_list), 0)
+    rcnn = (255 * rcnn).astype(np.uint8)
+    rcnn = np.delete(rcnn, range(reso[0], reso[0] + K), 0)
+
+    if cast_to_tensor:
+        rcnn = torch.from_numpy(rcnn)
+        rcnn = rcnn.unsqueeze(0)
+        rcnn = 1 - rcnn.float().div(255)
     return rcnn
 
 
