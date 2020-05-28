@@ -33,7 +33,7 @@ parser.add_argument('-n_blocks1', '--n_blocks1', type=int, default=7,
                     help='Number of residual blocks after Context Switching.')
 parser.add_argument('-n_blocks2', '--n_blocks2', type=int, default=3,
                     help='Number of residual blocks for Fg and alpha each.')
-parser.add_argument('-csv_file', '--csv_file', type=str, default='Video_data_train.csv', help='Csv file with training data')
+parser.add_argument('-csv_file', '--csv_file', type=str, default='data_csvs/Video_data_train_all_mix_short.csv', help='Csv file with training data')
 parser.add_argument('-use_kpts', '--use_kpts', action='store_true', help='Whether to load keypoints additionally')
 parser.add_argument('-use_gt', '--use_gt', action='store_true', help='Whether to use _gt.png masks for supervised loss')
 
@@ -112,6 +112,7 @@ for epoch in range(0, args.epoch):
 
     lG, lD, GenL, DisL_r, DisL_f, alL, fgL, compL, elapse_run, elapse = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
     gt_maskL = 0
+    divL = 0
 
     t0 = time.time();
 
@@ -120,11 +121,13 @@ for epoch in range(0, args.epoch):
 
         bg, image, seg, multi_fr, seg_gt, back_rnd = data['bg'], data['image'], data['seg'], data['multi_fr'], data[
             'seg-gt'], data['back-rnd']
+        invert_seg = data['invert_seg']
         mask_gt = data.get('mask-gt', None)
         kpts = data.get('kpts', None)
 
         bg, image, seg, multi_fr, seg_gt, back_rnd = Variable(bg.cuda()), Variable(image.cuda()), Variable(
             seg.cuda()), Variable(multi_fr.cuda()), Variable(seg_gt.cuda()), Variable(back_rnd.cuda())
+        invert_seg = Variable(invert_seg.cuda())
         mask_gt = Variable(mask_gt.cuda()) if mask_gt is not None else None
         kpts = Variable(kpts.cuda()) if kpts is not None else None
 
@@ -151,6 +154,9 @@ for epoch in range(0, args.epoch):
         # compose into same background
         comp_loss = c_loss(image, alpha_pred, fg_pred, bg, mask1)
 
+        # penalize for divergence from the mask
+        divergence_loss = ((alpha_pred + 1) / 2 * invert_seg).mean()
+
         # randomly permute the background
         perm = torch.LongTensor(np.random.permutation(bg.shape[0]))
         bg_sh = bg[perm, :, :, :]
@@ -170,7 +176,7 @@ for epoch in range(0, args.epoch):
 
         loss_ganG = GAN_loss(fake_response, label_type=True)
 
-        lossG = loss_ganG + wt * (0.05 * comp_loss + 0.05 * al_loss + 0.05 * fg_loss + 0.25 * mask_l1_loss)
+        lossG = loss_ganG + wt * (0.05 * comp_loss + 0.05 * al_loss + 0.05 * fg_loss + 0.25 * mask_l1_loss + 1. * divergence_loss)
 
         optimizerG.zero_grad()
 
@@ -202,6 +208,7 @@ for epoch in range(0, args.epoch):
         alL += al_loss.data
         fgL += fg_loss.data
         compL += comp_loss.data
+        divL += divergence_loss.data
         gt_maskL += mask_l1_loss.data if not isinstance(mask_l1_loss, float) else 0.
 
         log_writer.add_scalar('Generator Loss', lossG.data, epoch * KK + i + 1)
@@ -215,6 +222,7 @@ for epoch in range(0, args.epoch):
         log_writer.add_scalar('Generator Loss: Comp', comp_loss.data, epoch * KK + i + 1)
         if not isinstance(mask_l1_loss, float):
             log_writer.add_scalar('Generator Loss: GT Mask L1', mask_l1_loss.data, epoch * KK + i + 1)
+        log_writer.add_scalar('Generator Loss: Divergence', divergence_loss.data, epoch * KK + i + 1)
 
         t1 = time.time()
 
@@ -224,14 +232,16 @@ for epoch in range(0, args.epoch):
 
         if i % step == (step - 1):
             print(
-                '[%d, %5d] Gen-loss:  %.4f Disc-loss: %.4f Alpha-loss: %.4f Fg-loss: %.4f Comp-loss: %.4f GT-Mask-L1: %.4f Time-all: %.4f Time-fwbw: %.4f' % (
-                epoch + 1, i + 1, lG / step, lD / step, alL / step, fgL / step, compL / step, gt_maskL / step,
+                    '[%d, %5d] Gen-loss:  %.4f Disc-loss: %.4f Alpha-loss: %.4f Fg-loss: %.4f Comp-loss: %.4f Divergence: %.4f GT-Mask-L1: %.4f Time-all: %.4f Time-fwbw: %.4f' % (
+                epoch + 1, i + 1, lG / step, lD / step, alL / step, fgL / step, compL / step, divL / step, gt_maskL / step,
                 elapse / step, elapse_run / step))
             lG, lD, GenL, DisL_r, DisL_f, alL, fgL, compL, elapse_run, elapse = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             gt_maskL = 0
+            divL = 0
 
             write_tb_log(image, 'image', log_writer, i)
             write_tb_log(seg, 'seg', log_writer, i)
+            write_tb_log(invert_seg*2-1., 'invert_seg', log_writer, i)
             write_tb_log(alpha_pred_sup, 'alpha-sup', log_writer, i)
             write_tb_log(alpha_pred, 'alpha_pred', log_writer, i)
             write_tb_log(fg_pred_sup * mask, 'fg-pred-sup', log_writer, i)
