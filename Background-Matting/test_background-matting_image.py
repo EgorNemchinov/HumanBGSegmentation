@@ -71,7 +71,7 @@ if os.path.isdir(model_dir) and len(os.listdir(model_dir)) > 0:
     fo = glob.glob(model_main_dir + 'net*_epoch_*')
     model_name1 = fo[0]
 else:
-    models = glob.glob(f'Models/{args.trained_model}net*_epoch_*')
+    models = glob.glob(f'Models/{args.trained_model}netG_epoch_*')
     models.sort(key=lambda k: int(k[:-4].split('_')[-1]))
     model_name1 = models[-1]
     assert os.path.exists(model_name1), model_name1
@@ -84,6 +84,9 @@ netM = nn.DataParallel(netM)
 netM.load_state_dict(torch.load(model_name1))
 netM.cuda();
 netM.eval()
+for m in netM.modules():
+    if isinstance(m, nn.BatchNorm2d):
+        m.track_running_stats=False
 cudnn.benchmark = True
 reso = (512, 512)  # input reoslution to the network
 
@@ -115,9 +118,9 @@ for i in range(0, len(test_imgs)):
         bg_im0 = cv2.cvtColor(bg_im0, cv2.COLOR_BGR2RGB);
 
     if args.use_kpts:
-        kpts_path = filename.replace('_img', '_img_keypoints')
+        kpts_path = os.path.join(data_path, filename.replace('_img.png', '_img_keypoints.json'))
         kpts = read_kpts_json(kpts_path) if os.path.exists(kpts_path) else None
-        kpts_path = kpts_path.replace('_img', '')
+        kpts_path = os.path.join(data_path, filename.replace('_img.png', '_keypoints.json'))
         kpts = read_kpts_json(kpts_path) if (kpts is None) and os.path.exists(kpts_path) else kpts
         assert kpts is not None, kpts_path
     else:
@@ -160,7 +163,7 @@ for i in range(0, len(test_imgs)):
 
     # crop tightly
     bgr_img0 = bgr_img;
-    if rcnn.sum() < 500:
+    if rcnn.sum() < 500 or (kpts is not None and len(kpts) == 0):
         cv2.imwrite(result_path + '/' + filename.replace('_img', '_out'), bgr_img * 0)
         cv2.imwrite(result_path + '/' + filename.replace('_img', '_fg'), bgr_img * 0)
         cv2.imwrite(result_path + '/' + filename.replace('_img', '_compose'), back_img10)
@@ -181,7 +184,8 @@ for i in range(0, len(test_imgs)):
         kpts = apply_crop_kpts(kpts, bbox, reso)
         kpts = np.concatenate(tuple(kp[np.newaxis, ...] for kp in kpts), axis=0)
         skeleton_feats = gen_skeletons(kpts, reso[0], reso[1], stride=1, sigma=6., threshold=4., visdiff=False)
-        skeleton_feats = to_tensor(skeleton_feats)
+        skeleton_feats = to_tensor(skeleton_feats).unsqueeze(0)
+        skeleton_feats = Variable(skeleton_feats.cuda())
 
     # process segmentation mask
     kernel_er = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))

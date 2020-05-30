@@ -25,11 +25,14 @@ model_name=real-fixed-cam
 if [ $# -ge 3 ]; then
     model_name="$3"
     echo "Set model_name to $model_name"
+    if [[ $model_name == *"kpts"* ]]; then
+        kpts_arg="--use_kpts"
+    fi
 fi
 
 echo "--> Running matting in docker"
 docker run --gpus all -v $BG_MATTING_DIR:/bg-matting -v $(readlink -f "$d"/..):/data back-mat \
-      bash -c "cd /bg-matting/; export CUDA_VISIBLE_DEVICES=0,1; python test_background-matting_image.py -m $model_name -i /data/$(basename "$d") -o /data/$out_name -b /data/$par_name.png  -tb /data/$par_name.png"
+      bash -c "cd /bg-matting/; export CUDA_VISIBLE_DEVICES=0,1; python test_background-matting_image.py -m $model_name -i /data/$(basename "$d") -o /data/$out_name -b /data/$par_name.png  -tb /data/$par_name.png $kpts_arg "
 
 echo "--> Organize into folders & create vids"
 for n in out matte compose fg; do

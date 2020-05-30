@@ -70,7 +70,7 @@ class ResnetConditionHR(nn.Module):
 			self.comb_kpts = None
 
 		#decoder
-		comb_amount = 3 + int(kpts_nc is not None) #TODO: 3 is with comb_multi
+                comb_amount = 3 + int(kpts_nc is not None)
 		model_res_dec=[nn.Conv2d(ngf * mult + comb_amount*nf_part,ngf*mult,kernel_size=1,stride=1,padding=0,bias=False),norm_layer(ngf*mult),nn.ReLU(True)]
 		for i in range(n_blocks1):
 			model_res_dec += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]

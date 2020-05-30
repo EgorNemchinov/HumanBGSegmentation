@@ -241,9 +241,9 @@ def create_inverted_seg_tensor(rcnn, reso, cast_to_tensor=True):
         rcnn = np.delete(rcnn, del_id, 0)
     rcnn = cv2.copyMakeBorder(rcnn, 0, K + len(del_id), 0, 0, cv2.BORDER_REPLICATE)
 
-    iters = np.random.randint(8, 12)
+    iters = np.random.randint(10, 15)
     rcnn = cv2.dilate(rcnn, kernel_dil, iterations=iters)
-    k_size_list = [(71, 71), (81, 81)]
+    k_size_list = [(71, 71), (81, 81), (91, 91)]
     rcnn = cv2.GaussianBlur(rcnn.astype(np.float32), random.choice(k_size_list), 0)
     rcnn = (255 * rcnn).astype(np.uint8)
     rcnn = np.delete(rcnn, range(reso[0], reso[0] + K), 0)
