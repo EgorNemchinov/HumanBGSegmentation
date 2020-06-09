@@ -169,88 +169,97 @@ for i in range(0, len(test_imgs)):
         cv2.imwrite(result_path + '/' + filename.replace('_img', '_compose'), back_img10)
         cv2.imwrite(result_path + '/' + filename.replace('_img', '_matte').format(i), back_img20[:, :, ::-1])
         continue
-    bbox = get_bbox(rcnn, R=bgr_img0.shape[0], C=bgr_img0.shape[1])
+    # bbox = get_bbox(rcnn, R=bgr_img0.shape[0], C=bgr_img0.shape[1])
+    bboxes = get_bboxes(rcnn, R=bgr_img0.shape[0], C=bgr_img0.shape[1], kpts=kpts)
 
-    crop_list = [bgr_img, bg_im0, rcnn, back_img10, back_img20, multi_fr_w]
-    assert not any(c is None for c in crop_list), [i for i in range(len(crop_list)) if crop_list[i] is None]
-    crop_list = crop_images(crop_list, reso, bbox)
-    bgr_img = crop_list[0];
-    bg_im = crop_list[1];
-    rcnn = crop_list[2];
-    back_img1 = crop_list[3];
-    back_img2 = crop_list[4];
-    multi_fr = crop_list[5]
-    if kpts is not None:
-        kpts = apply_crop_kpts(kpts, bbox, reso)
-        kpts = np.concatenate(tuple(kp[np.newaxis, ...] for kp in kpts), axis=0)
-        skeleton_feats = gen_skeletons(kpts, reso[0], reso[1], stride=1, sigma=6., threshold=4., visdiff=False)
-        skeleton_feats = to_tensor(skeleton_feats).unsqueeze(0)
-        skeleton_feats = Variable(skeleton_feats.cuda())
+    alphas, fgs = [], []
+    for bbox in bboxes:
+        crop_list = [bgr_img, bg_im0, rcnn, back_img10, back_img20, multi_fr_w]
+        assert not any(c is None for c in crop_list), [i for i in range(len(crop_list)) if crop_list[i] is None]
+        crop_list = crop_images(crop_list, reso, bbox)
+        bgr_img = crop_list[0];
+        bg_im = crop_list[1];
+        rcnn = crop_list[2];
+        back_img1 = crop_list[3];
+        back_img2 = crop_list[4];
+        multi_fr = crop_list[5]
+        if kpts is not None:
+            kpts = apply_crop_kpts(kpts, bbox, reso)
+            kpts = np.concatenate(tuple(kp[np.newaxis, ...] for kp in kpts), axis=0)
+            skeleton_feats = gen_skeletons(kpts, reso[0], reso[1], stride=1, sigma=6., threshold=4., visdiff=False)
+            skeleton_feats = to_tensor(skeleton_feats).unsqueeze(0)
+            skeleton_feats = Variable(skeleton_feats.cuda())
 
-    # process segmentation mask
-    kernel_er = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    kernel_dil = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    rcnn = rcnn.astype(np.float32) / 255;
-    rcnn[rcnn > 0.2] = 1;
-    K = 25
+        # process segmentation mask
+        kernel_er = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        kernel_dil = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        rcnn = rcnn.astype(np.float32) / 255;
+        rcnn[rcnn > 0.2] = 1;
+        K = 25
 
-    zero_id = np.nonzero(np.sum(rcnn, axis=1) == 0)
-    del_id = zero_id[0][zero_id[0] > 250]
-    if len(del_id) > 0:
-        del_id = [del_id[0] - 2, del_id[0] - 1, *del_id]
-        rcnn = np.delete(rcnn, del_id, 0)
-    rcnn = cv2.copyMakeBorder(rcnn, 0, K + len(del_id), 0, 0, cv2.BORDER_REPLICATE)
+        zero_id = np.nonzero(np.sum(rcnn, axis=1) == 0)
+        del_id = zero_id[0][zero_id[0] > 250]
+        if len(del_id) > 0:
+            del_id = [del_id[0] - 2, del_id[0] - 1, *del_id]
+            rcnn = np.delete(rcnn, del_id, 0)
+        rcnn = cv2.copyMakeBorder(rcnn, 0, K + len(del_id), 0, 0, cv2.BORDER_REPLICATE)
 
-    rcnn = cv2.erode(rcnn, kernel_er, iterations=10)
-    rcnn = cv2.dilate(rcnn, kernel_dil, iterations=5)
-    rcnn = cv2.GaussianBlur(rcnn.astype(np.float32), (31, 31), 0)
-    rcnn = (255 * rcnn).astype(np.uint8)
-    rcnn = np.delete(rcnn, range(reso[0], reso[0] + K), 0)
+        rcnn = cv2.erode(rcnn, kernel_er, iterations=10)
+        rcnn = cv2.dilate(rcnn, kernel_dil, iterations=5)
+        rcnn = cv2.GaussianBlur(rcnn.astype(np.float32), (31, 31), 0)
+        rcnn = (255 * rcnn).astype(np.uint8)
+        rcnn = np.delete(rcnn, range(reso[0], reso[0] + K), 0)
 
-    # convert to torch
-    img = torch.from_numpy(bgr_img.transpose((2, 0, 1))).unsqueeze(0);
-    img = 2 * img.float().div(255) - 1
-    bg = torch.from_numpy(bg_im.transpose((2, 0, 1))).unsqueeze(0);
-    bg = 2 * bg.float().div(255) - 1
-    rcnn_al = torch.from_numpy(rcnn).unsqueeze(0).unsqueeze(0);
-    rcnn_al = 2 * rcnn_al.float().div(255) - 1
-    multi_fr = torch.from_numpy(multi_fr.transpose((2, 0, 1))).unsqueeze(0);
-    multi_fr = 2 * multi_fr.float().div(255) - 1
+        # convert to torch
+        img = torch.from_numpy(bgr_img.transpose((2, 0, 1))).unsqueeze(0);
+        img = 2 * img.float().div(255) - 1
+        bg = torch.from_numpy(bg_im.transpose((2, 0, 1))).unsqueeze(0);
+        bg = 2 * bg.float().div(255) - 1
+        rcnn_al = torch.from_numpy(rcnn).unsqueeze(0).unsqueeze(0);
+        rcnn_al = 2 * rcnn_al.float().div(255) - 1
+        multi_fr = torch.from_numpy(multi_fr.transpose((2, 0, 1))).unsqueeze(0);
+        multi_fr = 2 * multi_fr.float().div(255) - 1
 
-    with torch.no_grad():
-        img, bg, rcnn_al, multi_fr = Variable(img.cuda()), Variable(bg.cuda()), Variable(rcnn_al.cuda()), Variable(
-            multi_fr.cuda())
-        input_im = torch.cat([img, bg, rcnn_al, multi_fr], dim=1)
+        with torch.no_grad():
+            img, bg, rcnn_al, multi_fr = Variable(img.cuda()), Variable(bg.cuda()), Variable(rcnn_al.cuda()), Variable(
+                multi_fr.cuda())
+            input_im = torch.cat([img, bg, rcnn_al, multi_fr], dim=1)
 
-        alpha_pred, fg_pred_tmp = netM(img, bg, rcnn_al, multi_fr, kp=skeleton_feats if kpts is not None else None)
+            alpha_pred, fg_pred_tmp = netM(img, bg, rcnn_al, multi_fr, kp=skeleton_feats if kpts is not None else None)
 
-        al_mask = (alpha_pred > 0.95).type(torch.cuda.FloatTensor)
+            al_mask = (alpha_pred > 0.95).type(torch.cuda.FloatTensor)
 
-        # for regions with alpha>0.95, simply use the image as fg
-        fg_pred = img * al_mask + fg_pred_tmp * (1 - al_mask)
+            # for regions with alpha>0.95, simply use the image as fg
+            fg_pred = img * al_mask + fg_pred_tmp * (1 - al_mask)
 
-        alpha_out = to_image(alpha_pred[0, ...]);
+            alpha_out = to_image(alpha_pred[0, ...]);
 
-        # refine alpha with connected component
-        labels = label((alpha_out > 0.05).astype(int))
-        try:
-            assert (labels.max() != 0)
-        except:
-            continue
-        largestCC = labels == np.argmax(np.bincount(labels.flat)[1:]) + 1
-        #		alpha_out=alpha_out*largestCC
+            # refine alpha with connected component
+            labels = label((alpha_out > 0.05).astype(int))
+            try:
+                assert (labels.max() != 0)
+            except:
+                continue
+            largestCC = labels == np.argmax(np.bincount(labels.flat)[1:]) + 1
+            #		alpha_out=alpha_out*largestCC
 
-        alpha_out = (255 * alpha_out[..., 0]).astype(np.uint8)
+            alpha_out = (255 * alpha_out[..., 0]).astype(np.uint8)
 
-        fg_out = to_image(fg_pred[0, ...]);
-        fg_out = fg_out * np.expand_dims((alpha_out.astype(float) / 255 > 0.01).astype(float), axis=2);
-        fg_out = (255 * fg_out).astype(np.uint8)
+            fg_out = to_image(fg_pred[0, ...]);
+            fg_out = fg_out * np.expand_dims((alpha_out.astype(float) / 255 > 0.01).astype(float), axis=2);
+            fg_out = (255 * fg_out).astype(np.uint8)
 
-        # Uncrop
-        R0 = bgr_img0.shape[0];
-        C0 = bgr_img0.shape[1]
-        alpha_out0 = uncrop(alpha_out, bbox, R0, C0)
-        fg_out0 = uncrop(fg_out, bbox, R0, C0)
+            # Uncrop
+            R0 = bgr_img0.shape[0];
+            C0 = bgr_img0.shape[1]
+            alphas.append(uncrop(alpha_out, bbox, R0, C0))
+            fgs.append(uncrop(fg_out, bbox, R0, C0))
+
+    alpha_out0 = sum(alphas)
+    fg_out0 = fgs[0]
+    for a, f in zip(alphas[1:], fgs[1:]):
+        a = a / 255.
+        fg_out0[a > 0.01] = f[a > 0.01]
 
     # compose
     back_img10 = cv2.resize(back_img10, (C0, R0));
