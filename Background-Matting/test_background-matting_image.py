@@ -96,8 +96,7 @@ if args.back is not None:
     bg_im0 = cv2.cvtColor(bg_im0, cv2.COLOR_BGR2RGB);
 
 # Create a list of test images
-test_imgs = [f for f in os.listdir(data_path) if
-             os.path.isfile(os.path.join(data_path, f)) and f.endswith('_img.png')]
+test_imgs = [f for f in os.listdir(os.path.join(data_path, 'images')) if f.endswith('.png')]
 test_imgs.sort()
 
 # output directory
@@ -109,7 +108,7 @@ if not os.path.exists(result_path):
 for i in range(0, len(test_imgs)):
     filename = test_imgs[i]
     # original image
-    bgr_img = cv2.imread(os.path.join(data_path, filename));
+    bgr_img = cv2.imread(os.path.join(data_path, 'images', filename));
     bgr_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB);
 
     if args.back is None:
@@ -118,16 +117,16 @@ for i in range(0, len(test_imgs)):
         bg_im0 = cv2.cvtColor(bg_im0, cv2.COLOR_BGR2RGB);
 
     if args.use_kpts:
-        kpts_path = os.path.join(data_path, filename.replace('_img.png', '_img_keypoints.json'))
+        kpts_path = os.path.join(data_path, 'keypoints', filename.replace('.png', '_keypoints.json'))
         kpts = read_kpts_json(kpts_path) if os.path.exists(kpts_path) else None
-        kpts_path = os.path.join(data_path, filename.replace('_img.png', '_keypoints.json'))
-        kpts = read_kpts_json(kpts_path) if (kpts is None) and os.path.exists(kpts_path) else kpts
+        # kpts_path = os.path.join(data_path, filename.replace('_img.png', '_keypoints.json'))
+        # kpts = read_kpts_json(kpts_path) if (kpts is None) and os.path.exists(kpts_path) else kpts
         assert kpts is not None, kpts_path
     else:
         kpts = None
 
     # segmentation mask
-    rcnn = cv2.imread(os.path.join(data_path, filename.replace('_img', '_masksDL')), 0);
+    rcnn = cv2.imread(os.path.join(data_path, 'masks', filename), 0);
 
     if args.video:  # if video mode, load target background frames
         # target background path
@@ -150,7 +149,7 @@ for i in range(0, len(test_imgs)):
                 idx[t] = idx[t] - len(test_imgs)
 
             file_tmp = test_imgs[idx[t]]
-            bgr_img_mul = cv2.imread(os.path.join(data_path, file_tmp));
+            bgr_img_mul = cv2.imread(os.path.join(data_path, 'images', file_tmp));
             multi_fr_w[..., t] = cv2.cvtColor(bgr_img_mul, cv2.COLOR_BGR2GRAY);
 
     else:
@@ -164,10 +163,12 @@ for i in range(0, len(test_imgs)):
     # crop tightly
     bgr_img0 = bgr_img;
     if rcnn.sum() < 500 or (kpts is not None and len(kpts) == 0):
-        cv2.imwrite(result_path + '/' + filename.replace('_img', '_out'), bgr_img * 0)
-        cv2.imwrite(result_path + '/' + filename.replace('_img', '_fg'), bgr_img * 0)
-        cv2.imwrite(result_path + '/' + filename.replace('_img', '_compose'), back_img10)
-        cv2.imwrite(result_path + '/' + filename.replace('_img', '_matte').format(i), back_img20[:, :, ::-1])
+        for subdir in ('out', 'fg', 'compose', 'matte'):
+            os.makedirs(subdir, exist_ok=True)
+        cv2.imwrite(os.path.join(result_path, 'out', filename), bgr_img * 0)
+        cv2.imwrite(os.path.join(result_path, 'fg', filename), bgr_img * 0)
+        cv2.imwrite(os.path.join(result_path, 'compose', filename), back_img10)
+        cv2.imwrite(os.path.join(result_path, 'matte', filename), back_img20[:, :, ::-1])
         continue
     # bbox = get_bbox(rcnn, R=bgr_img0.shape[0], C=bgr_img0.shape[1])
     bboxes = get_bboxes(rcnn, R=bgr_img0.shape[0], C=bgr_img0.shape[1], kpts=kpts)
@@ -267,10 +268,12 @@ for i in range(0, len(test_imgs)):
     comp_im_tr1 = composite4(fg_out0, back_img10, alpha_out0)
     comp_im_tr2 = composite4(fg_out0, back_img20, alpha_out0)
 
-    cv2.imwrite(result_path + '/' + filename.replace('_img', '_out'), alpha_out0)
-    cv2.imwrite(result_path + '/' + filename.replace('_img', '_fg'), cv2.cvtColor(fg_out0, cv2.COLOR_BGR2RGB))
-    cv2.imwrite(result_path + '/' + filename.replace('_img', '_compose'), cv2.cvtColor(comp_im_tr1, cv2.COLOR_BGR2RGB))
-    cv2.imwrite(result_path + '/' + filename.replace('_img', '_matte').format(i),
+    for subdir in ('out', 'fg', 'compose', 'matte'):
+        os.makedirs(subdir, exist_ok=True)
+    cv2.imwrite(os.path.join(result_path, 'out', filename), alpha_out0)
+    cv2.imwrite(os.path.join(result_path, 'fg', filename), cv2.cvtColor(fg_out0, cv2.COLOR_BGR2RGB))
+    cv2.imwrite(os.path.join(result_path, 'fg', filename), cv2.cvtColor(comp_im_tr1, cv2.COLOR_BGR2RGB))
+    cv2.imwrite(os.path.join(result_path, 'matte', filename),
                 cv2.cvtColor(comp_im_tr2, cv2.COLOR_BGR2RGB))
 
-    print('Done: ' + str(i + 1) + '/' + str(len(test_imgs)))
+    #print('Done: ' + str(i + 1) + '/' + str(len(test_imgs)))

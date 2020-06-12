@@ -6,14 +6,15 @@ import os
 
 
 def load_img_mask(img_dir, index, skip_last=0):
-    files = sorted([f for f in os.listdir(img_dir) if f.endswith('_img.png')])
+    masks_dir = img_dir.replace('images', 'masks')
+    files = sorted([f for f in os.listdir(img_dir) if f.endswith('.png')])
     if skip_last > 0:
         files = files[:-skip_last]
     if index >= len(files):
         return None, None
     filename = files[index]
     img = cv2.imread(osp.join(img_dir, filename))
-    mask = cv2.imread(osp.join(img_dir, filename.replace('_img', '_masksDL')), cv2.IMREAD_GRAYSCALE)
+    mask = cv2.imread(osp.join(masks_dir, filename), cv2.IMREAD_GRAYSCALE)
     if img is None or mask is None:
         return None, None
     return img, mask[:, :, np.newaxis]

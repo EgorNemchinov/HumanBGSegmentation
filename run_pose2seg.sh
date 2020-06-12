@@ -30,5 +30,3 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 cd "$CUR_DIR" || exit 1
-
-echo "--> Copying masks & renaming to _masksDL.png"
