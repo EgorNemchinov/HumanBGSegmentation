@@ -1,7 +1,4 @@
-source ~/.zshrc
-conda activate pose2seg
-
-POSE2SEG_DIR=$HOME/Pose2Seg
+POSE2SEG_DIR=/Pose2Seg
 
 if [ $# -eq 0 ]; then
     echo "Usage: bash run_pose2seg.sh <path-to-dir> [depth=1]"

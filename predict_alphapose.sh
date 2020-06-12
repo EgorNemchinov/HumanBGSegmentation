@@ -1,7 +1,4 @@
-source ~/.zshrc
-conda activate alphapose
-
-ALPHAPOSE_DIR=$HOME/AlphaPose
+ALPHAPOSE_DIR=/AlphaPose
 
 if [ $# -ne 1 ]; then
     echo "Usage: bash predict_alphapose.sh <path-to-dir>"
