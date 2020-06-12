@@ -6,12 +6,12 @@ VID_PATH=$1
 if [ $# -eq 0 ]; then
     echo "Usage: bash main.sh <VID_PATH> [DIR_NAME]"
 fi
-if [ ! -e $VID_PATH]; then
+if [ ! -e $VID_PATH ]; then
     echo "Failed as path $VID_PATH doesn't exist"
     exit 1
 fi
 
-NAME=$(date +'%Y-%m-%d_%H:%M:%S')
+NAME=$(date +'%Y-%m-%d_%H%M%S')
 if [ $# -ge 2 ]; then
     NAME=$2
 fi

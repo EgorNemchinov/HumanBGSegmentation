@@ -17,9 +17,9 @@ if [ $(ls -1 "$d"/images | wc -l) -ne $(ls -1 "$d"/masks | wc -l) ]; then
 fi
 
 out_name="$2"
-mkdir -p "$d"/../"$out_name" && echo "----> Created " "$d"/../"$out_name" || echo "----> " "$d"/../"$out_name" " already exists"
-out_dir=$(readlink -f "$d"/../"$out_name")
-par_name=$(readlink -f "$d/.." | xargs basename)
+mkdir -p "$d"/"$out_name" && echo "----> Created " "$d"/../"$out_name" || echo "----> " "$d"/../"$out_name" " already exists"
+out_dir=$(readlink -f "$d"/"$out_name")
+par_name=$(readlink -f "$d" | xargs basename)
 
 model_name=real-fixed-cam
 if [ $# -ge 3 ]; then
@@ -31,7 +31,7 @@ if [ $# -ge 3 ]; then
 fi
 
 echo "--> Running matting in docker"
-docker run --gpus all -v $BG_MATTING_DIR:/bg-matting -v $(readlink -f "$d"/..):/data back-mat \
+docker run --gpus all -v $BG_MATTING_DIR:/bg-matting -v $(readlink -f "$d"):/data bgm \
       bash -c "cd /bg-matting/; export CUDA_VISIBLE_DEVICES=0,1; python test_background-matting_image.py -m $model_name -i /data/ -o /data/$out_name -b /data/$par_name.png  -tb /data/$par_name.png $kpts_arg "
 
 echo "--> Organize into folders & create vids"

@@ -170,11 +170,11 @@ for i in range(0, len(test_imgs)):
         cv2.imwrite(os.path.join(result_path, 'compose', filename), back_img10)
         cv2.imwrite(os.path.join(result_path, 'matte', filename), back_img20[:, :, ::-1])
         continue
-    # bbox = get_bbox(rcnn, R=bgr_img0.shape[0], C=bgr_img0.shape[1])
-    bboxes = get_bboxes(rcnn, R=bgr_img0.shape[0], C=bgr_img0.shape[1], kpts=kpts)
+    bbox = get_bbox(rcnn, R=bgr_img0.shape[0], C=bgr_img0.shape[1])
+    #bboxes = get_bboxes(rcnn, R=bgr_img0.shape[0], C=bgr_img0.shape[1], kpts=kpts)
 
     alphas, fgs = [], []
-    for bbox in bboxes:
+    for bbox in [bbox]:
         crop_list = [bgr_img, bg_im0, rcnn, back_img10, back_img20, multi_fr_w]
         assert not any(c is None for c in crop_list), [i for i in range(len(crop_list)) if crop_list[i] is None]
         crop_list = crop_images(crop_list, reso, bbox)
@@ -256,7 +256,7 @@ for i in range(0, len(test_imgs)):
             alphas.append(uncrop(alpha_out, bbox, R0, C0))
             fgs.append(uncrop(fg_out, bbox, R0, C0))
 
-    alpha_out0 = sum(alphas)
+    alpha_out0 = alphas[0] #sum(alphas)
     fg_out0 = fgs[0]
     for a, f in zip(alphas[1:], fgs[1:]):
         a = a / 255.
@@ -269,10 +269,10 @@ for i in range(0, len(test_imgs)):
     comp_im_tr2 = composite4(fg_out0, back_img20, alpha_out0)
 
     for subdir in ('out', 'fg', 'compose', 'matte'):
-        os.makedirs(subdir, exist_ok=True)
+        os.makedirs(os.path.join(result_path, subdir), exist_ok=True)
     cv2.imwrite(os.path.join(result_path, 'out', filename), alpha_out0)
     cv2.imwrite(os.path.join(result_path, 'fg', filename), cv2.cvtColor(fg_out0, cv2.COLOR_BGR2RGB))
-    cv2.imwrite(os.path.join(result_path, 'fg', filename), cv2.cvtColor(comp_im_tr1, cv2.COLOR_BGR2RGB))
+    cv2.imwrite(os.path.join(result_path, 'compose', filename), cv2.cvtColor(comp_im_tr1, cv2.COLOR_BGR2RGB))
     cv2.imwrite(os.path.join(result_path, 'matte', filename),
                 cv2.cvtColor(comp_im_tr2, cv2.COLOR_BGR2RGB))
 
