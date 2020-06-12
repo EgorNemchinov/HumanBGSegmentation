@@ -6,9 +6,9 @@
 #$image;$captured_back;$segmentation;$image+20frames;$image+2*20frames;$image+3*20frames;$image+4*20frames;$target_back
 
 #path = "/home/egorn/segm/Background-Matting/Captured_Data/fixed-camera/train_custom"
-path = "/home/egorn/segm/Background-Matting/Captured_Data/fixed-camera/train_custom"
-background_path = "/home/egorn/segm/Background-Matting/Captured_Data/background"
-output_csv = "data_csvs/Video_data_train_custom.csv"
+path = "/home/egorn/segm/HumanSegmentation/Background-Matting/Captured_Data/fixed-camera/train_custom"
+background_path = "/home/egorn/segm/HumanSegmentation/Background-Matting/Captured_Data/background"
+output_csv = "data_csvs/Video_data_train_y2.csv"
 GT_MASKS=False
 #######################################
 

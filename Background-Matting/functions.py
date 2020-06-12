@@ -34,17 +34,47 @@ def compose_image_withshift(alpha_pred,fg_pred,bg,seg):
 
     return torch.autograd.Variable(image_sh.cuda())
 
-def get_bbox(mask,R,C):
+
+def get_bbox(mask, R, C):
     where = np.array(np.where(mask))
     x1, y1 = np.amin(where, axis=1)
     x2, y2 = np.amax(where, axis=1)
 
     bbox_init=[x1,y1,np.maximum(x2-x1,y2-y1),np.maximum(x2-x1,y2-y1)]
 
-
     bbox=create_bbox(bbox_init,(R,C))
 
     return bbox
+
+
+def get_bboxes(mask, R, C, kpts=None):
+    if kpts is not None:
+        kpts_sizes = [kp[:, 1].max() - kp[:, 0].min() for kp in kpts]
+        kpts = np.concatenate(kpts, axis=0)
+        kpts = kpts[np.argsort(kpts_sizes)[::-1]]
+
+        bboxes = []
+        for kp in kpts:
+            x1, y1 = kp.min(axis=0)
+            x2, y2 = kp.max(axis=0)
+            bbox_init = [x1,y1,x2-x1,y2-y1]
+            bbox_init[0] -= bbox_init[2] * 0.05
+            bbox_init[2] += bbox_init[2] * 0.05
+            bbox_init[1] -= bbox_init[3] * 0.05
+            bbox_init[3] += bbox_init[3] * 0.05
+
+            bboxes.append(create_bbox(bbox_init, (R, C)))
+        return bboxes
+    else:
+        where = np.array(np.where(mask))
+        x1, y1 = np.amin(where, axis=1)
+        x2, y2 = np.amax(where, axis=1)
+
+        bbox_init=[x1,y1,np.maximum(x2-x1,y2-y1),np.maximum(x2-x1,y2-y1)]
+
+        bbox=create_bbox(bbox_init,(R,C))
+        return [bbox]
+
 
 def crop_images(crop_list,reso,bbox):
 

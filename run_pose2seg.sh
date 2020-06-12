@@ -1,7 +1,4 @@
-source ~/.zshrc
-conda activate pose2seg
-
-POSE2SEG_DIR=$HOME/Pose2Seg
+POSE2SEG_DIR=/Pose2Seg
 
 if [ $# -eq 0 ]; then
     echo "Usage: bash run_pose2seg.sh <path-to-dir> [depth=1]"
@@ -24,11 +21,9 @@ fi
 echo "--> Running Pose2Seg on folder $d/"
 CUR_DIR=$PWD
 cd "$POSE2SEG_DIR" || exit 1
-python test.py --custom_dir $d --weights pose2seg_release.pkl --depth $depth
+python infer.py pose2seg_release.pkl $d --depth $depth
 if [ $? -ne 0 ]; then
   echo "Failed to run pose2seg.."
   exit 1
 fi
 cd "$CUR_DIR" || exit 1
-
-echo "--> Copying masks & renaming to _masksDL.png"

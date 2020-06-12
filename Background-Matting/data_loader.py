@@ -10,14 +10,18 @@ import pdb, random
 from torch.utils.data import Dataset, DataLoader
 import random, os, cv2
 
+from skeleton_feat import read_kpts_json, gen_skeletons, apply_crop_kpts
+
 unknown_code = 128
 
 
 class VideoData(Dataset):
-    def __init__(self, csv_file, data_config, transform=None):
+    def __init__(self, csv_file, data_config, transform=None, use_gt_masks=False, use_kpts=False):
         self.frames = pd.read_csv(csv_file, sep=';')
         self.transform = transform
         self.resolution = data_config['reso']
+        self.use_gt_masks = use_gt_masks
+        self.use_kpts = use_kpts
 
     def __len__(self):
         return len(self.frames)
@@ -34,7 +38,19 @@ class VideoData(Dataset):
 
         back_rnd = io.imread(self.frames.iloc[idx, 7])
 
-        gt_mask = io.imread(self.frames.iloc[idx, 8]) if self.frames.shape[1] > 8 else None
+        if self.use_gt_masks:
+            gt_path = self.frames.iloc[idx, 0].replace('_img.png', '_gt.png')
+            gt_mask = io.imread(gt_path) if os.path.exists(gt_path) else None
+        else:
+            gt_mask = None
+
+        if self.use_kpts:
+            kpts_path = self.frames.iloc[idx, 0].replace('_img.png', '_img_keypoints.json')
+            kpts = read_kpts_json(kpts_path) if os.path.exists(kpts_path) else None
+            kpts_path = kpts_path.replace('_img', '')
+            kpts = read_kpts_json(kpts_path) if (kpts is None) and os.path.exists(kpts_path) else kpts
+        else:
+            kpts = None
 
         sz = self.resolution
 
@@ -49,6 +65,10 @@ class VideoData(Dataset):
             fr4 = cv2.flip(fr4, 1)
             if gt_mask is not None:
                 gt_mask = cv2.flip(gt_mask, 1)
+            if kpts is not None:
+#                assert sz[0] > kpts[:, 0].max(), (sz, kpts[:, 0].max())
+                for i in range(len(kpts)):
+                    kpts[i][:, 0] = sz[0] - kpts[i][:, 0]
 
         # make frames together
         multi_fr = np.zeros((img.shape[0], img.shape[1], 4))
@@ -66,6 +86,12 @@ class VideoData(Dataset):
         multi_fr = apply_crop(multi_fr, bbox, self.resolution)
         if gt_mask is not None:
             gt_mask = apply_crop(gt_mask, bbox, self.resolution)
+        if kpts is not None:
+            kpts = apply_crop_kpts(kpts, bbox, self.resolution)
+
+        if kpts is not None:
+            kpts = np.concatenate(tuple(kp[np.newaxis,...] for kp in kpts), axis=0)
+            skeleton_feats = gen_skeletons(kpts, sz[0], sz[1], stride=1, sigma=6., threshold=4., visdiff=False)
 
         # convert seg to guidance map
         # segg=create_seg_guide(seg,self.resolution)
@@ -73,9 +99,10 @@ class VideoData(Dataset):
         sample = {'image': to_tensor(img), 'seg': to_tensor(create_seg_guide(seg, self.resolution)),
                   'bg': to_tensor(back), 'multi_fr': to_tensor(multi_fr), 'seg-gt': to_tensor(seg),
                   'back-rnd': to_tensor(back_rnd), 'invert_seg': create_inverted_seg_tensor(seg, self.resolution)}
-
         if gt_mask is not None:
             sample.update({'mask-gt': to_tensor(gt_mask)})
+        if kpts is not None:
+            sample.update({'kpts': to_tensor(skeleton_feats)})
 
         if self.transform:
             sample = self.transform(sample)
@@ -214,9 +241,9 @@ def create_inverted_seg_tensor(rcnn, reso, cast_to_tensor=True):
         rcnn = np.delete(rcnn, del_id, 0)
     rcnn = cv2.copyMakeBorder(rcnn, 0, K + len(del_id), 0, 0, cv2.BORDER_REPLICATE)
 
-    iters = np.random.randint(8, 12)
+    iters = np.random.randint(10, 15)
     rcnn = cv2.dilate(rcnn, kernel_dil, iterations=iters)
-    k_size_list = [(71, 71), (81, 81)]
+    k_size_list = [(71, 71), (81, 81), (91, 91)]
     rcnn = cv2.GaussianBlur(rcnn.astype(np.float32), random.choice(k_size_list), 0)
     rcnn = (255 * rcnn).astype(np.uint8)
     rcnn = np.delete(rcnn, range(reso[0], reso[0] + K), 0)
@@ -372,4 +399,3 @@ def to_tensor(pic):
     # backward compatibility
 
     return 2 * (img.float().div(255)) - 1
-

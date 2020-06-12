@@ -33,6 +33,9 @@ parser.add_argument('-n_blocks1', '--n_blocks1', type=int, default=7,
                     help='Number of residual blocks after Context Switching.')
 parser.add_argument('-n_blocks2', '--n_blocks2', type=int, default=3,
                     help='Number of residual blocks for Fg and alpha each.')
+parser.add_argument('-csv_file', '--csv_file', type=str, default='data_csvs/Video_data_train_all_mix_short.csv', help='Csv file with training data')
+parser.add_argument('-use_kpts', '--use_kpts', action='store_true', help='Whether to load keypoints additionally')
+parser.add_argument('-use_gt', '--use_gt', action='store_true', help='Whether to use _gt.png masks for supervised loss')
 
 args = parser.parse_args()
 
@@ -59,8 +62,8 @@ def collate_filter_none(batch):
 
 
 # Original Data
-traindata = VideoData(csv_file='data_csvs/Video_data_train_all_mix_short.csv', data_config=data_config_train,
-                      transform=None)  # Write a dataloader function that can read the database provided by .csv file
+traindata = VideoData(csv_file=args.csv_file, data_config=data_config_train,
+                      transform=None, use_kpts=args.use_kpts, use_gt_masks=args.use_gt)  # Write a dataloader function that can read the database provided by .csv file
 train_loader = torch.utils.data.DataLoader(traindata, batch_size=args.batch_size, shuffle=True,
                                            num_workers=args.batch_size, collate_fn=collate_filter_none)
 
@@ -74,7 +77,7 @@ netB.eval()
 for param in netB.parameters():  # freeze netD
     param.requires_grad = False
 
-netG = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=args.n_blocks1, n_blocks2=args.n_blocks2)
+netG = ResnetConditionHR(input_nc=(3, 3, 1, 4), output_nc=4, n_blocks1=args.n_blocks1, n_blocks2=args.n_blocks2, kpts_nc=55 if args.use_kpts else None)
 netG.apply(conv_init)
 netG = nn.DataParallel(netG)
 netG.cuda()
@@ -120,11 +123,13 @@ for epoch in range(0, args.epoch):
             'seg-gt'], data['back-rnd']
         invert_seg = data['invert_seg']
         mask_gt = data.get('mask-gt', None)
+        kpts = data.get('kpts', None)
 
         bg, image, seg, multi_fr, seg_gt, back_rnd = Variable(bg.cuda()), Variable(image.cuda()), Variable(
             seg.cuda()), Variable(multi_fr.cuda()), Variable(seg_gt.cuda()), Variable(back_rnd.cuda())
         invert_seg = Variable(invert_seg.cuda())
         mask_gt = Variable(mask_gt.cuda()) if mask_gt is not None else None
+        kpts = Variable(kpts.cuda()) if kpts is not None else None
 
         mask0 = Variable(torch.ones(seg.shape).cuda())
 
@@ -138,7 +143,7 @@ for epoch in range(0, args.epoch):
 
         ## Train Generator
 
-        alpha_pred, fg_pred = netG(image, bg, seg, multi_fr)
+        alpha_pred, fg_pred = netG(image, bg, seg, multi_fr, kp=kpts)
 
         ##pseudo-supervised losses
         al_loss = l1_loss(alpha_pred_sup, alpha_pred, mask0) + 0.5 * g_loss(alpha_pred_sup, alpha_pred, mask0)
@@ -215,8 +220,9 @@ for epoch in range(0, args.epoch):
         log_writer.add_scalar('Generator Loss: Alpha', al_loss.data, epoch * KK + i + 1)
         log_writer.add_scalar('Generator Loss: Fg', fg_loss.data, epoch * KK + i + 1)
         log_writer.add_scalar('Generator Loss: Comp', comp_loss.data, epoch * KK + i + 1)
+        if not isinstance(mask_l1_loss, float):
+            log_writer.add_scalar('Generator Loss: GT Mask L1', mask_l1_loss.data, epoch * KK + i + 1)
         log_writer.add_scalar('Generator Loss: Divergence', divergence_loss.data, epoch * KK + i + 1)
-        log_writer.add_scalar('Generator Loss: GT Mask L1', mask_l1_loss.data if not isinstance(mask_l1_loss, float) else 0., epoch * KK + i + 1)
 
         t1 = time.time()
 

@@ -6,7 +6,7 @@ import numpy as np
 
 
 class ResnetConditionHR(nn.Module):
-	def __init__(self, input_nc, output_nc, ngf=64, nf_part=64,norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks1=7, n_blocks2=3, padding_type='reflect'):
+	def __init__(self, input_nc, output_nc, ngf=64, nf_part=64, norm_layer=nn.BatchNorm2d, use_dropout=False,n_blocks1=7, n_blocks2=3, padding_type='reflect', kpts_nc=None):
 		assert(n_blocks1 >= 0); assert(n_blocks2 >= 0)
 		super(ResnetConditionHR, self).__init__()
 		self.input_nc = input_nc
@@ -43,6 +43,15 @@ class ResnetConditionHR(nn.Module):
 			mult = 2**i
 			model_enc_multi += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,stride=2, padding=1, bias=use_bias),norm_layer(ngf * mult * 2),nn.ReLU(True)]
 
+		if kpts_nc:
+			model_enc_kpts = [nn.ReflectionPad2d(3),nn.Conv2d(kpts_nc, ngf, kernel_size=7, padding=0,bias=use_bias),norm_layer(ngf),nn.ReLU(True)]
+			n_downsampling = 2
+			for i in range(n_downsampling):
+				mult = 2**i
+				model_enc_kpts += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,stride=2, padding=1, bias=use_bias),norm_layer(ngf * mult * 2),nn.ReLU(True)]
+			self.model_enc_kpts = nn.Sequential(*model_enc_kpts)
+		else:
+			self.model_enc_kpts = None
 
 		self.model_enc1 = nn.Sequential(*model_enc1)
 		self.model_enc2 = nn.Sequential(*model_enc2)
@@ -55,8 +64,14 @@ class ResnetConditionHR(nn.Module):
 		self.comb_seg=nn.Sequential(nn.Conv2d(ngf * mult*2,nf_part,kernel_size=1,stride=1,padding=0,bias=False),norm_layer(ngf),nn.ReLU(True))
 		self.comb_multi=nn.Sequential(nn.Conv2d(ngf * mult*2,nf_part,kernel_size=1,stride=1,padding=0,bias=False),norm_layer(ngf),nn.ReLU(True))
 
+		if kpts_nc:
+			self.comb_kpts = nn.Sequential(nn.Conv2d(ngf * mult*2,nf_part,kernel_size=1,stride=1,padding=0,bias=False),norm_layer(ngf),nn.ReLU(True))
+		else:
+			self.comb_kpts = None
+
 		#decoder
-		model_res_dec=[nn.Conv2d(ngf * mult +3*nf_part,ngf*mult,kernel_size=1,stride=1,padding=0,bias=False),norm_layer(ngf*mult),nn.ReLU(True)]
+		comb_amount = 3 + int(kpts_nc is not None)
+		model_res_dec=[nn.Conv2d(ngf * mult + comb_amount*nf_part,ngf*mult,kernel_size=1,stride=1,padding=0,bias=False),norm_layer(ngf*mult),nn.ReLU(True)]
 		for i in range(n_blocks1):
 			model_res_dec += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
 
@@ -86,31 +101,41 @@ class ResnetConditionHR(nn.Module):
 
 		self.model_dec_fg1=nn.Sequential(*model_dec_fg1)
 		self.model_fg_out = nn.Sequential(*model_dec_fg2)
-		
 
-	def forward(self, image,back,seg,multi):
-		img_feat1=self.model_enc1(image)
-		img_feat=self.model_enc2(img_feat1)
+	def forward(self, image, back, seg, multi, kp=None):
+		img_feat1 = self.model_enc1(image)
+		img_feat = self.model_enc2(img_feat1)
 
-		back_feat=self.model_enc_back(back)
-		seg_feat=self.model_enc_seg(seg)
-		multi_feat=self.model_enc_multi(multi)
+		back_feat = self.model_enc_back(back)
+		seg_feat = self.model_enc_seg(seg)
+		multi_feat = self.model_enc_multi(multi)
 
-		oth_feat=torch.cat([self.comb_back(torch.cat([img_feat,back_feat],dim=1)),self.comb_seg(torch.cat([img_feat,seg_feat],dim=1)),self.comb_multi(torch.cat([img_feat,back_feat],dim=1))],dim=1)
+		# takes in maps of 55 channels
+		kp_feat = self.model_enc_kpts(kp) if kp is not None else None
 
-		out_dec=self.model_res_dec(torch.cat([img_feat,oth_feat],dim=1))
+		if kp is not None:
+			oth_feat = torch.cat([self.comb_back(torch.cat([img_feat, back_feat], dim=1)),
+								  self.comb_seg(torch.cat([img_feat, seg_feat], dim=1)),
+								  self.comb_multi(torch.cat([img_feat,back_feat],dim=1)),
+								  self.comb_kpts(torch.cat([img_feat, kp_feat], dim=1)),
+								  # instead of dummy features -- kpts?
+								  ], dim=1)
+		else:
+			oth_feat = torch.cat([self.comb_back(torch.cat([img_feat, back_feat], dim=1)),
+								  self.comb_seg(torch.cat([img_feat, seg_feat], dim=1)),
+								  self.comb_multi(torch.cat([img_feat, back_feat], dim=1)),  # todo turn on multi-feat?
+								  ], dim=1)
 
-		out_dec_al=self.model_res_dec_al(out_dec)
-		al_out=self.model_al_out(out_dec_al)
+		out_dec = self.model_res_dec(torch.cat([img_feat, oth_feat], dim=1))
 
-		out_dec_fg=self.model_res_dec_fg(out_dec)
-		out_dec_fg1=self.model_dec_fg1(out_dec_fg)
-		fg_out=self.model_fg_out(torch.cat([out_dec_fg1,img_feat1],dim=1))
+		out_dec_al = self.model_res_dec_al(out_dec)
+		al_out = self.model_al_out(out_dec_al)
 
+		out_dec_fg = self.model_res_dec_fg(out_dec)
+		out_dec_fg1 = self.model_dec_fg1(out_dec_fg)
+		fg_out = self.model_fg_out(torch.cat([out_dec_fg1, img_feat1], dim=1))
 
 		return al_out, fg_out
-
-############################## part ##################################
 
 
 
